@@ -139,6 +139,67 @@ service nginx restart
 
 ## Configuration
 
+### Default Settings Configuration
+
+The Messages application uses Default Settings to configure how messages are processed. To access these settings:
+
+1. Navigate to **Advanced** > **Default Settings**
+2. Look for Category: **Messages**
+3. Configure settings for both **inbound** and **outbound** subcategories
+
+#### Inbound Message Settings
+
+These settings control how incoming messages from your SMS provider are processed. Based on the screenshot, the following settings are available:
+
+| Setting | Subcategory | Type | Name | Value | Enabled |
+|---------|------------|------|------|--------|---------|
+| Messages | inbound | content | message_content | Body | ✓ (sms) |
+| Messages | inbound | content | message_from | From | ✓ (sms,mms) |
+| Messages | inbound | content | message_media_array | | ✗ (mms) |
+| Messages | inbound | content | message_media_name | | ✗ (mms) |
+| Messages | inbound | content | message_media_type | | ✗ (mms) |
+| Messages | inbound | content | message_media_url | | ✗ (mms) |
+| Messages | inbound | content | message_to | To | ✓ (sms,mms) |
+| Messages | inbound | format | message_from | +1xxxxxxxxxx | ✓ (sms,mms) |
+| Messages | inbound | format | message_to | +1xxxxxxxxxx | ✓ (sms,mms) |
+
+**Key Settings:**
+- **message_content**: Maps the provider's message body field (typically "Body")
+- **message_from**: Maps the sender's phone number field (typically "From")
+- **message_to**: Maps the recipient's phone number field (typically "To")
+- **message_media_*** settings: Used for MMS support (disabled by default)
+
+#### Outbound Message Settings
+
+These settings control how FusionPBX sends messages to your SMS provider:
+
+| Setting | Subcategory | Type | Name | Value | Enabled |
+|---------|------------|------|------|--------|---------|
+| Messages | outbound | authentication | http_auth_password | | ✓ (auth) |
+| Messages | outbound | authentication | http_auth_type | basic | ✓ (auth) |
+| Messages | outbound | authentication | http_auth_username | | ✓ (auth) |
+| Messages | outbound | content | content_type | post | ✓ |
+| Messages | outbound | content | message_content | Body | ✓ (sms) |
+| Messages | outbound | content | message_from | From | ✓ (sms,mms) |
+| Messages | outbound | content | message_media_other | | ✗ (mms) |
+| Messages | outbound | content | message_media_url | | ✗ |
+| Messages | outbound | content | message_other | | ✗ (sms,mms) |
+| Messages | outbound | content | message_to | To | ✓ (sms,mms) |
+| Messages | outbound | destination | http_destination | https://api.twilio.com/2010-0... | ✓ |
+| Messages | outbound | format | message_from | +1xxxxxxxxxx | ✓ (sms,mms) |
+| Messages | outbound | format | message_to | +xxxxxxxxxxx | ✓ |
+| Messages | outbound | format | message_to | +1xxxxxxxxxx | ✓ (sms,mms) |
+| Messages | outbound | header | http_content_type | | ✗ |
+| Messages | outbound | method | http_method | POST | ✓ |
+
+**Key Settings:**
+- **http_auth_username**: Your provider's username or Account SID
+- **http_auth_password**: Your provider's password or Auth Token  
+- **http_auth_type**: Set to `basic` for basic authentication
+- **content_type**: Set to `post` for form-encoded data
+- **http_destination**: The full API endpoint URL for your provider
+- **http_method**: Usually `POST`
+
 ### Provider Setup
 
 1. **Add a Provider**
@@ -148,16 +209,19 @@ service nginx restart
    - Click **SETUP** to configure the provider
 
 2. **Configure Provider Settings**
-   - Enter your API credentials (API key, secret, account ID, etc.)
-   - Configure authentication method (usually API key or OAuth)
-   - Set any provider-specific settings (webhook URLs, sender IDs, etc.)
+   - Enter your API credentials
    - Save the configuration
 
-3. **Custom Provider Setup**
-   - If your provider is not listed, click **Add Provider** for a blank template
-   - Consult your provider's API documentation
-   - Configure the API endpoints, authentication, and request formats
-   - Test the configuration thoroughly
+3. **Verify Default Settings**
+   - Go to **Advanced** > **Default Settings**
+   - Look for Category: `Messages`
+   - Verify settings match the table above
+   - Enable required settings (blue toggle = enabled)
+   - Fill in authentication credentials:
+     - `http_auth_username`: Your provider username/Account SID
+     - `http_auth_password`: Your provider password/Auth Token
+   - Verify `http_destination` contains your provider's API URL
+   - Save all changes
 
 ### Destination Configuration
 
@@ -220,22 +284,30 @@ service nginx restart
 ### Common Issues
 
 1. **Messages Not Sending**
-   - Verify provider credentials are correct
+   - Check Default Settings under **Advanced** > **Default Settings** > Category: **Messages**
+   - Verify `http_auth_username` and `http_auth_password` are filled in
+   - Ensure `http_destination` contains the correct API URL
+   - Verify `http_method` is set to POST
    - Check service status: `systemctl status message_queue`
-   - Review logs: `/var/log/fusionpbx/messages.log`
    - Confirm provider account has sufficient balance
 
 2. **Messages Not Receiving**
    - Verify webhook URL is accessible from internet
-   - Check NGINX rewrite rules are in place
+   - Check NGINX rewrite rules are in place (see Installation section)
    - Confirm destination numbers are properly configured
-   - Review provider webhook logs
+   - Review provider webhook configuration
 
 3. **MMS Not Working**
+   - Enable MMS-related settings in Default Settings (message_media_array, message_media_url, etc.)
    - Ensure NGINX rewrite rule is configured
    - Verify provider supports MMS
-   - Check file size limits with provider
-   - Confirm media types are supported
+
+4. **Authentication Errors**
+   - In Default Settings, verify:
+     - `http_auth_type` is set to `basic`
+     - `http_auth_username` has correct value
+     - `http_auth_password` has correct value
+   - Check that settings are enabled (blue toggle)
 
 ### Service Management
 
