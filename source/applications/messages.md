@@ -279,9 +279,179 @@ These settings control how FusionPBX sends messages to your SMS provider:
    - Configure email notifications (if available)
    - Endpoint devices receive push notifications (device-dependent)
 
+## SMS Destinations Configuration
+
+### Understanding SMS Routing in FusionPBX 5.3
+
+The Messages application in FusionPBX 5.3 handles SMS routing differently than voice calls. While voice destinations are configured through the **Dialplan** > **Destinations** interface, SMS messages require additional configuration to route correctly to specific extensions.
+
+### Method 1: Using Default Settings (Messages App)
+
+For the Messages app in FusionPBX 5.3, SMS destinations are configured through Default Settings:
+
+1. **Navigate to Default Settings:**
+   - Go to **Advanced** > **Default Settings**
+   - Look for or create Category: `messages`
+
+2. **Create SMS Destination Mappings:**
+   
+   Add a new setting for each DID that should receive SMS:
+   ```
+   Category: messages
+   Subcategory: destinations
+   Type: text
+   Name: +1234567890 (your DID with country code)
+   Value: extension:1001 (format: "extension:XXXX")
+   Enabled: true
+   Description: SMS routing for DID to extension
+   ```
+
+   Alternative value formats:
+   - `extension:1001` - Route to specific extension
+   - `group:support` - Route to a group
+   - `user:john.doe` - Route to specific user
+
+3. **Multiple Number Formats:**
+   
+   To ensure messages are routed regardless of format, create entries for each format:
+   ```
+   Name: +1234567890    Value: extension:1001
+   Name: 1234567890     Value: extension:1001
+   Name: 234567890      Value: extension:1001  (without country code)
+   ```
+
+### Method 2: Installing the SMS App (Legacy Interface)
+
+If you prefer a graphical interface for managing SMS destinations, you can install the legacy SMS app alongside the Messages app:
+
+1. **Install SMS App:**
+   ```bash
+   cd /var/www/fusionpbx/app
+   git clone https://github.com/fusionpbx/fusionpbx-apps.git temp_apps
+   cp -r temp_apps/sms /var/www/fusionpbx/app/
+   rm -rf temp_apps
+   
+   # Run upgrade script
+   php /var/www/fusionpbx/core/upgrade/upgrade.php
+   ```
+
+2. **Configure Database and Permissions:**
+   - Navigate to **Advanced** > **Upgrade**
+   - Run: Schema, Group Permissions, Menu Defaults
+
+3. **Access SMS Destinations:**
+   - Go to **Applications** > **SMS**
+   - Click **Destinations** tab
+   - Click **Add** to create new SMS destination
+   - Enter:
+     - Destination Number: Your DID (e.g., 1234567890)
+     - Extension: Target extension (e.g., 1001)
+     - Domain: Select your domain
+     - Description: Optional description
+
+4. **Benefits of SMS App:**
+   - Visual interface for managing destinations
+   - Easier to see all SMS routing at a glance
+   - Direct database management of SMS routes
+
+### Method 3: Direct Database Configuration
+
+For advanced users or bulk configuration:
+
+```sql
+-- Insert SMS destination directly into database
+INSERT INTO v_sms_destinations (
+    sms_destination_uuid,
+    domain_uuid,
+    destination_number,
+    destination_type,
+    destination_data,
+    destination_enabled
+) VALUES (
+    uuid_generate_v4(),
+    'YOUR_DOMAIN_UUID',
+    '+1234567890',
+    'extension',
+    '1001',
+    'true'
+);
+```
+
+### Verifying SMS Destination Configuration
+
+1. **Test Inbound Routing:**
+   - Send SMS from mobile to your DID
+   - Check **Applications** > **Messages** > **Message Logs**
+   - Verify message shows correct destination
+
+2. **Check Configuration:**
+   ```bash
+   # For Default Settings method
+   psql -U fusionpbx -d fusionpbx -c \
+   "SELECT * FROM v_default_settings WHERE default_setting_category='messages' AND default_setting_subcategory='destinations';"
+   
+   # For SMS App method
+   psql -U fusionpbx -d fusionpbx -c \
+   "SELECT * FROM v_sms_destinations WHERE destination_enabled='true';"
+   ```
+
+3. **Monitor Routing:**
+   - Enable debug logging
+   - Watch message_queue service logs
+   - Verify extension receives SIP MESSAGE
+
+### Important Notes
+
+- **Outbound Caller ID:** Ensure extensions have correct outbound caller ID matching their DID
+- **Provider Configuration:** DID must be configured with your SMS provider for messaging
+- **Extension Settings:** Extensions must have messaging enabled and proper SIP configuration
+- **Domain Matching:** Ensure DIDs and extensions are in the same domain
+
+## Known Issues and Workarounds
+
+### Messages Being Delivered to All Extensions
+
+**Issue:** SMS messages broadcast to all extensions instead of routing to specific DID.
+
+**Solution:** Configure SMS destinations (see SMS Destinations section above) and ensure:
+- Extension has correct "Outbound Caller ID Number" matching the DID
+- User is assigned to the extension
+- Contact record exists with Text enabled and DID set
+
+### Telnyx JSON Parsing Issues
+
+**Issue:** Telnyx V2 API messages show JSON data in text field instead of parsed content.
+
+**Workaround:** If using Telnyx, ensure you're using v2 webhook format. Some users report better success with Bandwidth.com provider integration.
+
+### Web UI Reply Issues
+
+**Issue:** Cannot reply directly in message thread; must use "+ NEW MESSAGE" button.
+
+**Workaround:** Use the New Message button and manually enter recipient information until this bug is fixed.
+
+### Plus Sign (+) Handling
+
+**Issue:** Inconsistent handling of + in phone numbers causes display issues.
+
+**Temporary Fix:** In `/app/messages/index.php`, add after getting message_from:
+```php
+$message_from = preg_replace('/\+/', '', $message_from);
+```
+
+### Debug Mode
+
+To troubleshoot message routing, enable debug mode in `/app/messages/index.php`:
+```php
+$debug = true; // Set at top of file
+```
+Check logs at `/tmp/messages.log` for routing details.
+
 ## Troubleshooting
 
-### Common Issues
+For comprehensive troubleshooting of SMS issues, see the [SMS Troubleshooting Guide](sms_troubleshooting.html).
+
+### Quick Troubleshooting Checklist
 
 1. **Messages Not Sending**
    - Check Default Settings under **Advanced** > **Default Settings** > Category: **Messages**
@@ -294,7 +464,7 @@ These settings control how FusionPBX sends messages to your SMS provider:
 2. **Messages Not Receiving**
    - Verify webhook URL is accessible from internet
    - Check NGINX rewrite rules are in place (see Installation section)
-   - Confirm destination numbers are properly configured
+   - Confirm destination numbers are properly configured (see SMS Destinations section above)
    - Review provider webhook configuration
 
 3. **MMS Not Working**
@@ -510,6 +680,40 @@ curl -X POST https://your-fusionpbx-domain.com/app/messages/resources/providers/
      -d "Text=Test message"
    ```
 
+### SMS Destinations (Critical for Routing)
+
+**Important:** In FusionPBX 5.3, the Messages app does not have a built-in GUI for SMS destinations. Without proper configuration, incoming SMS messages may be delivered to ALL extensions instead of the intended recipient. There are two solutions:
+
+#### Option 1: Configure SMS Destinations via Default Settings
+
+1. Navigate to **Advanced** > **Default Settings**
+2. Add entries under Category `messages`, Subcategory `destinations`:
+   ```
+   Type: text
+   Name: +1234567890 (your DID)
+   Value: extension:1001 (target extension)
+   Enabled: true
+   ```
+
+#### Option 2: Install the Legacy SMS App for GUI Management
+
+The SMS app provides a visual interface for managing SMS destinations:
+
+```bash
+cd /var/www/fusionpbx/app
+git clone https://github.com/fusionpbx/fusionpbx-apps.git temp_apps
+cp -r temp_apps/sms /var/www/fusionpbx/app/
+rm -rf temp_apps
+php /var/www/fusionpbx/core/upgrade/upgrade.php
+```
+
+After installation:
+- Navigate to **Applications** > **SMS**
+- Create SMS destinations linking DIDs to specific extensions
+- This prevents SMS broadcast to all extensions
+
+**Note:** The Messages app is the newer replacement for the SMS app. You can use both together (Messages for the web UI and provider integration, SMS for destination routing), but be aware this may cause conflicts. Choose one primary approach.
+
 ### Telnyx Configuration Example
 
 #### Prerequisites for Telnyx
@@ -547,11 +751,13 @@ curl -X POST https://your-fusionpbx-domain.com/app/messages/resources/providers/
    - Set Webhook URL:
    ```
    Inbound Webhook URL:
-   https://your-fusionpbx-domain.com/app/messages/resources/providers/telnyx.php
+   https://your-fusionpbx-domain.com/app/messages/index.php
    
    Webhook API Version: v2
    Webhook Failover URL: (optional backup URL)
    ```
+   
+   **Important:** The correct webhook endpoint is `/app/messages/index.php` (not the provider-specific path). This is not clearly documented but is critical for proper message routing.
 
 4. **Configure Outbound Settings**
    - Enable delivery receipts
